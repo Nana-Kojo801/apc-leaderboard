@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-ink-950: #07090f;
+  --color-ink-900: #0b0f19;
+  --color-ink-800: #121826;
+  --color-ink-700: #1b2333;
+  --color-ink-600: #2a3447;
+  --color-ink-400: #7d8aa3;
+  --color-ink-300: #a9b4c8;
+  --color-ink-100: #e6ebf3;
+
+  --color-gold: #f5b83d;
+  --color-silver: #c9d2e0;
+  --color-bronze: #d98b52;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-ink-950 text-ink-100 font-sans antialiased;
+  background-image:
+    radial-gradient(60rem 30rem at 50% -10rem, rgb(245 184 61 / 0.10), transparent 70%),
+    radial-gradient(40rem 20rem at 100% 0, rgb(99 102 241 / 0.08), transparent 70%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+@utility card {
+  @apply rounded-2xl border border-ink-700 bg-ink-900/80 backdrop-blur;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-ink-100
+    placeholder:text-ink-400 outline-none transition focus:border-gold/70 focus:ring-2 focus:ring-gold/20;
+}
+
+@utility label {
+  @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition
+    disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-gold text-ink-950 hover:bg-amber-300;
+}
+
+@utility btn-ghost {
+  @apply btn border border-ink-600 text-ink-100 hover:border-ink-400 hover:bg-ink-800;
+}
+
+@utility btn-danger {
+  @apply btn border border-red-500/30 text-red-300 hover:bg-red-500/10;
+}
