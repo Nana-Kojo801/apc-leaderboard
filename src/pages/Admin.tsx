@@ -4,7 +4,8 @@ import { api, ApiError, type Kata, type Member } from '../lib/api'
 import { fetchKata, fetchUser, kataUrl, parseKataRef, suggestedPoints, type CodewarsKata } from '../lib/codewars'
 import { useAsync } from '../lib/useAsync'
 import { useCodewarsKata } from '../lib/useCodewarsKata'
-import { Avatar, KyuBadge, Notice, PageHeader, Spinner } from '../components/ui'
+import { beltFor } from '../lib/belts'
+import { Avatar, BeltChip, KyuBadge, Notice, Spinner } from '../components/ui'
 import Login from './Login'
 
 type Flash = { kind: 'success' | 'error'; text: string } | null
@@ -28,20 +29,21 @@ function Dashboard({ email }: { email: string }) {
   }
 
   return (
-    <>
-      <PageHeader
-        title="Admin dashboard"
-        subtitle={
-          <>
-            Signed in as <span className="text-ink-100">{email}</span>
-          </>
-        }
-        right={
-          <button className="btn-ghost" onClick={() => void logout()}>
-            Sign out
-          </button>
-        }
-      />
+    <div className="mx-auto max-w-[1180px] px-4 sm:px-8">
+      <div className="flex flex-wrap items-end justify-between gap-4 pt-6 pb-8 sm:pt-12">
+        <div>
+          <p className="anim-fade-up text-sm font-semibold text-club">Exec area</p>
+          <h1 className="display anim-fade-up mt-2 text-[clamp(34px,4.5vw,52px)] leading-[1.02] font-extrabold" style={{ animationDelay: '80ms' }}>
+            Dojo admin
+          </h1>
+          <p className="anim-fade-up mt-2 text-muted" style={{ animationDelay: '140ms' }}>
+            Signed in as <span className="font-semibold text-ink">{email}</span>
+          </p>
+        </div>
+        <button className="btn-ghost anim-fade-up" style={{ animationDelay: '200ms' }} onClick={() => void logout()}>
+          Sign out
+        </button>
+      </div>
 
       {forbidden && (
         <div className="mb-6">
@@ -52,17 +54,17 @@ function Dashboard({ email }: { email: string }) {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="Members" count={members.data?.length}>
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <Panel title="Members" count={members.data?.length} delay={120}>
           <AddMemberForm onAdded={members.reload} onError={onError} />
           <MemberList members={members.data} loading={members.loading} onChanged={members.reload} onError={onError} />
-          <p className="mt-3 text-xs text-ink-400">
+          <p className="mt-3 text-[13px] text-muted">
             The server only exposes the top 20 members. To remove someone not listed, use “Remove by username”.
           </p>
           <RemoveByUsername onRemoved={members.reload} onError={onError} />
         </Panel>
 
-        <Panel title="Challenges" count={katas.data?.length}>
+        <Panel title="Katas" count={katas.data?.length} delay={220}>
           <AddKataForm existing={katas.data ?? []} onAdded={katas.reload} onError={onError} />
           <KataList
             katas={katas.data}
@@ -75,16 +77,16 @@ function Dashboard({ email }: { email: string }) {
           />
         </Panel>
       </div>
-    </>
+    </div>
   )
 }
 
-function Panel({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+function Panel({ title, count, delay = 0, children }: { title: string; count?: number; delay?: number; children: ReactNode }) {
   return (
-    <section className="card p-5">
-      <h2 className="mb-4 flex items-center gap-2 font-semibold">
+    <section className="card anim-fade-up p-5 sm:p-6" style={{ animationDelay: `${delay}ms` }}>
+      <h2 className="display mb-5 flex items-center gap-2.5 text-2xl font-extrabold">
         {title}
-        {count != null && <span className="rounded-full bg-ink-700 px-2 py-0.5 text-xs text-ink-300">{count}</span>}
+        {count != null && <span className="rounded-full bg-chip px-2.5 py-0.5 font-sans text-xs font-bold tracking-normal text-ink-2">{count}</span>}
       </h2>
       {children}
     </section>
@@ -136,7 +138,7 @@ function AddMemberForm({ onAdded, onError }: { onAdded: () => Promise<void>; onE
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="off"
         />
-        <button className="btn-primary shrink-0" disabled={busy || !username.trim()}>
+        <button className="btn-ink shrink-0 rounded-xl" disabled={busy || !username.trim()}>
           {busy ? <Spinner /> : 'Add'}
         </button>
       </div>
@@ -159,7 +161,7 @@ function MemberList({
   const [error, setError] = useState<string>()
 
   if (loading && !members) return <ListSkeleton />
-  if (!members?.length) return <p className="py-6 text-center text-sm text-ink-400">No members tracked yet.</p>
+  if (!members?.length) return <p className="py-8 text-center text-sm text-muted">No members tracked yet.</p>
 
   return (
     <>
@@ -168,12 +170,15 @@ function MemberList({
           <Notice kind="error">{error}</Notice>
         </div>
       )}
-      <ul className="divide-y divide-ink-700/70 rounded-xl border border-ink-700">
+      <ul className="divide-y divide-line-soft overflow-hidden rounded-2xl border border-line">
         {members.map((m) => (
-          <li key={m.username} className="flex items-center gap-3 px-3 py-2">
+          <li key={m.username} className="anim-fade-up flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-[#FAFBFC]">
             <Avatar name={m.username} size="sm" />
-            <span className="min-w-0 flex-1 truncate text-sm">{m.username}</span>
-            <span className="font-mono text-xs text-ink-400">{m.points} pts</span>
+            <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{m.username}</span>
+            <span className="hidden sm:inline">
+              <BeltChip belt={beltFor(m.points).belt} />
+            </span>
+            <span className="text-[13px] font-semibold text-muted">{m.points} pts</span>
             <ConfirmButton
               label="Remove"
               onConfirm={async () => {
@@ -201,7 +206,7 @@ function RemoveByUsername({ onRemoved, onError }: { onRemoved: () => Promise<voi
 
   if (!open)
     return (
-      <button className="mt-2 text-xs text-ink-400 underline hover:text-ink-100" onClick={() => setOpen(true)}>
+      <button className="mt-2 text-[13px] font-semibold text-ink-2 underline underline-offset-2 hover:text-club" onClick={() => setOpen(true)}>
         Remove by username
       </button>
     )
@@ -228,7 +233,7 @@ function RemoveByUsername({ onRemoved, onError }: { onRemoved: () => Promise<voi
     <form onSubmit={submit} className="mt-3 space-y-2">
       <div className="flex gap-2">
         <input className="input" placeholder="Exact username" value={username} onChange={(e) => setUsername(e.target.value)} />
-        <button className="btn-danger shrink-0" disabled={busy || !username.trim()}>
+        <button className="btn shrink-0 rounded-xl border border-[#F3C4C0] text-club hover:bg-[#FDF0EF]" disabled={busy || !username.trim()}>
           {busy ? <Spinner /> : 'Remove'}
         </button>
       </div>
@@ -324,26 +329,26 @@ function AddKataForm({
         </label>
         <input
           id="kata-ref"
-          className="input font-mono text-xs"
+          className="input font-mono text-[13px]"
           placeholder="https://www.codewars.com/kata/5277c8a221e209d3f6000b56"
           value={ref}
           onChange={(e) => setRef(e.target.value)}
           autoComplete="off"
         />
-        <div className="mt-1.5 min-h-5 text-xs">
+        <div className="mt-2 min-h-6 text-[13px]">
           {lookup.state === 'loading' && (
-            <span className="flex items-center gap-2 text-ink-400">
+            <span className="flex items-center gap-2 text-muted">
               <Spinner className="size-3" /> Looking up on Codewars…
             </span>
           )}
           {lookup.state === 'found' && lookup.kata && (
-            <span className="flex items-center gap-2 text-emerald-300">
+            <span className="anim-fade-up flex items-center gap-2 font-semibold text-[#1F6B43]">
               ✓ Found <KyuBadge rank={lookup.kata.rank} />
-              {duplicate && <span className="text-amber-300">— already tracked</span>}
+              {duplicate && <span className="font-semibold text-[#8A5A00]">— already tracked</span>}
             </span>
           )}
           {lookup.state === 'missing' && (
-            <span className="text-amber-300">
+            <span className="font-semibold text-[#8A5A00]">
               {HEX_ID.test(parsed)
                 ? 'Could not reach Codewars — you can still fill in the name manually.'
                 : 'No kata found. Paste the full kata link from Codewars.'}
@@ -375,7 +380,7 @@ function AddKataForm({
         </div>
       </div>
 
-      <button className="btn-primary w-full" disabled={!canSubmit}>
+      <button className="btn-club w-full" disabled={!canSubmit}>
         {busy && <Spinner />} Track kata
       </button>
       {flash && <Notice kind={flash.kind}>{flash.text}</Notice>}
@@ -397,7 +402,7 @@ function KataList({
   const [error, setError] = useState<string>()
 
   if (loading && !katas) return <ListSkeleton />
-  if (!katas?.length) return <p className="py-6 text-center text-sm text-ink-400">No katas tracked yet.</p>
+  if (!katas?.length) return <p className="py-8 text-center text-sm text-muted">No katas tracked yet.</p>
 
   return (
     <>
@@ -406,7 +411,7 @@ function KataList({
           <Notice kind="error">{error}</Notice>
         </div>
       )}
-      <ul className="divide-y divide-ink-700/70 rounded-xl border border-ink-700">
+      <ul className="divide-y divide-line-soft overflow-hidden rounded-2xl border border-line">
         {katas.map((k) => (
           <KataRow
             key={k.kataRemoteId}
@@ -423,7 +428,7 @@ function KataList({
           />
         ))}
       </ul>
-      <p className="mt-3 text-xs text-ink-400">Removing a kata also deducts its points from everyone who solved it.</p>
+      <p className="mt-3 text-[13px] text-muted">Removing a kata also deducts its points from everyone who solved it.</p>
     </>
   )
 }
@@ -431,12 +436,12 @@ function KataList({
 function KataRow({ kata, onDelete }: { kata: Kata; onDelete: () => Promise<void> }) {
   const info = useCodewarsKata(kata.kataRemoteId)
   return (
-    <li className="flex items-center gap-3 px-3 py-2">
-      <span className="w-14 shrink-0">{info !== null && <KyuBadge rank={info?.rank} />}</span>
-      <a href={kata.kataUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-sm hover:underline">
+    <li className="anim-fade-up flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-[#FAFBFC]">
+      <span className="w-[72px] shrink-0">{info !== null && <KyuBadge rank={info?.rank} />}</span>
+      <a href={kata.kataUrl} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-[15px] font-semibold hover:underline">
         {kata.kataName}
       </a>
-      <span className="font-mono text-xs text-gold">+{kata.pointDifficulty}</span>
+      <span className="display text-base font-extrabold text-club">+{kata.pointDifficulty}</span>
       <ConfirmButton label="Remove" onConfirm={onDelete} />
     </li>
   )
@@ -468,8 +473,8 @@ function ConfirmButton({ label, onConfirm }: { label: string; onConfirm: () => P
           setArmed(false)
         }
       }}
-      className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium transition ${
-        armed ? 'bg-red-500/20 text-red-200' : 'text-ink-400 hover:bg-ink-800 hover:text-red-300'
+      className={`min-h-9 shrink-0 rounded-full px-3 text-[13px] font-semibold transition-all duration-200 ${
+        armed ? 'bg-club text-white' : 'text-muted hover:bg-[#FDF0EF] hover:text-club'
       }`}
     >
       {busy ? <Spinner className="size-3" /> : armed ? 'Confirm?' : label}
@@ -481,7 +486,7 @@ function ListSkeleton() {
   return (
     <div className="space-y-2">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="h-11 animate-pulse rounded-lg bg-ink-800" />
+        <div key={i} className="skeleton h-12 rounded-xl" />
       ))}
     </div>
   )

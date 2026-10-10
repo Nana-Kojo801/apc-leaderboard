@@ -1,204 +1,535 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type Member } from '../lib/api'
+import { BELTS, beltFor, beltRange, beltStyle, type BeltColor, type BeltProgress } from '../lib/belts'
 import { profileUrl } from '../lib/codewars'
-import { useAsync } from '../lib/useAsync'
-import { Avatar, EmptyState, Notice, PageHeader, Spinner } from '../components/ui'
+import { useCountUp, useInView } from '../lib/motion'
 import { timeAgo } from '../lib/time'
+import { useAsync } from '../lib/useAsync'
+import KataCard, { KataCardSkeleton } from '../components/KataCard'
+import Reveal from '../components/Reveal'
+import { Avatar, BeltChip, BeltStrip, EmptyState, Notice, Progress, SectionHeader } from '../components/ui'
 
 const REFRESH_MS = 30_000
 
-interface Ranked extends Member {
+export interface RankedMember extends Member {
   rank: number
+  progress: BeltProgress
 }
 
-/** Standard competition ranking: equal points share a rank (1, 1, 3 …). */
-function withRanks(members: Member[]): Ranked[] {
+/** Standard competition ranking (1, 1, 3 …) plus each member's belt. */
+function rankMembers(members: Member[]): RankedMember[] {
   const sorted = [...members].sort((a, b) => b.points - a.points || a.username.localeCompare(b.username))
-  const ranked: Ranked[] = []
+  const out: RankedMember[] = []
   sorted.forEach((m, i) => {
-    const prev = ranked[i - 1]
-    ranked.push({ ...m, rank: prev && prev.points === m.points ? prev.rank : i + 1 })
+    const prev = out[i - 1]
+    out.push({ ...m, rank: prev && prev.points === m.points ? prev.rank : i + 1, progress: beltFor(m.points) })
   })
-  return ranked
+  return out
+}
+
+/** Points gained by each member since the previous poll, for the "+N" flash. */
+function useGains(members: Member[] | undefined) {
+  const prev = useRef<Map<string, number> | null>(null)
+  const [gains, setGains] = useState<Record<string, { n: number; key: number }>>({})
+
+  useEffect(() => {
+    if (!members) return
+    const next = new Map(members.map((m) => [m.username, m.points]))
+    if (prev.current) {
+      const fresh: Record<string, { n: number; key: number }> = {}
+      for (const [name, pts] of next) {
+        const before = prev.current.get(name)
+        if (before != null && pts > before) fresh[name] = { n: pts - before, key: Date.now() }
+      }
+      if (Object.keys(fresh).length) setGains((g) => ({ ...g, ...fresh }))
+    }
+    prev.current = next
+  }, [members])
+
+  return gains
 }
 
 export default function Leaderboard() {
-  const { data, error, loading, updatedAt, reload } = useAsync(api.leaderboard, REFRESH_MS)
-  const [query, setQuery] = useState('')
-  const now = useNow()
-
-  const ranked = useMemo(() => withRanks(data ?? []), [data])
-  const filtered = query
-    ? ranked.filter((m) => m.username.toLowerCase().includes(query.trim().toLowerCase()))
-    : ranked
-  const podium = query ? [] : ranked.slice(0, 3)
+  const board = useAsync(api.leaderboard, REFRESH_MS)
+  const katas = useAsync(api.katas, 60_000)
+  const ranked = useMemo(() => rankMembers(board.data ?? []), [board.data])
   const totalPoints = ranked.reduce((s, m) => s + m.points, 0)
 
   return (
     <>
-      <PageHeader
-        title="Leaderboard"
-        subtitle="Top 20 members ranked by points earned from club katas."
-        right={
-          <button onClick={() => void reload()} className="flex items-center gap-2 text-xs text-ink-400 hover:text-ink-100">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
-            </span>
-            Live · updated {timeAgo(updatedAt, now)}
-          </button>
-        }
-      />
+      <div className="mx-auto max-w-[1180px] px-4 sm:px-8">
+        <Hero
+          members={board.data ? ranked.length : undefined}
+          points={board.data ? totalPoints : undefined}
+          katas={katas.data?.length}
+          ranked={ranked}
+          loading={board.loading && !board.data}
+        />
 
-      {error && !data && (
-        <Notice kind="error">
-          {error.message}{' '}
-          <button className="underline" onClick={() => void reload()}>
-            Retry
-          </button>
-        </Notice>
-      )}
+        <Board
+          ranked={ranked}
+          loading={board.loading && !board.data}
+          error={board.error && !board.data ? board.error.message : undefined}
+          retry={board.reload}
+          updatedAt={board.updatedAt}
+          raw={board.data}
+        />
 
-      {loading && !data && (
-        <div className="flex justify-center py-20 text-ink-400">
-          <Spinner className="size-6" />
-        </div>
-      )}
-
-      {data && ranked.length === 0 && (
-        <EmptyState title="No members yet">
-          Once an admin adds members, they'll show up here as they solve{' '}
-          <Link to="/challenges" className="underline">
-            club challenges
-          </Link>
-          .
-        </EmptyState>
-      )}
-
-      {ranked.length > 0 && (
-        <>
-          <div className="mb-8 grid grid-cols-3 gap-3 text-center sm:gap-4">
-            <Stat label="Members" value={ranked.length} />
-            <Stat label="Total points" value={totalPoints.toLocaleString()} />
-            <Stat label="Top score" value={ranked[0].points.toLocaleString()} />
-          </div>
-
-          {podium.length > 0 && <Podium members={podium} />}
-
-          <div className="mb-3 mt-10 flex items-center justify-between gap-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-400">
-              {query ? `Results for “${query}”` : 'Rankings'}
-            </h2>
-            <input
-              className="input max-w-56"
-              placeholder="Search members…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search members"
+        <section className="pt-16 sm:pt-20" aria-label="Katas">
+          <Reveal>
+            <SectionHeader
+              title="Katas this season"
+              subtitle={
+                katas.data?.length
+                  ? `${katas.data.reduce((s, k) => s + k.pointDifficulty, 0).toLocaleString()} points open · solve on Codewars, each counts once`
+                  : 'The challenges that earn points on the board.'
+              }
+              right={
+                <Link to="/katas" className="btn-ghost">
+                  All katas
+                </Link>
+              }
             />
-          </div>
-
-          {filtered.length === 0 ? (
-            <p className="py-10 text-center text-sm text-ink-400">No members match “{query}”.</p>
-          ) : (
-            <ol className="card divide-y divide-ink-700/70 overflow-hidden">
-              {filtered.map((m) => (
-                <Row key={m.username} member={m} highlight={!query && m.rank <= 3} top={ranked[0].points} />
+          </Reveal>
+          {katas.loading && !katas.data ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <KataCardSkeleton key={i} />
               ))}
-            </ol>
+            </div>
+          ) : katas.data?.length ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {katas.data.slice(0, 3).map((k, i) => (
+                <Reveal key={k.kataRemoteId} delay={i * 90}>
+                  <KataCard kata={k} />
+                </Reveal>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No katas yet">An exec hasn't added this season's katas. Check back soon.</EmptyState>
           )}
-        </>
-      )}
+        </section>
+
+        <HowItWorks />
+      </div>
     </>
   )
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+/* ---------------------------------- Hero ---------------------------------- */
+
+function Hero({
+  members,
+  points,
+  katas,
+  ranked,
+  loading,
+}: {
+  members?: number
+  points?: number
+  katas?: number
+  ranked: RankedMember[]
+  loading: boolean
+}) {
   return (
-    <div className="card px-3 py-4">
-      <div className="font-mono text-xl font-bold sm:text-2xl">{value}</div>
-      <div className="mt-0.5 text-[11px] uppercase tracking-wide text-ink-400">{label}</div>
-    </div>
-  )
-}
-
-const medal = {
-  1: { ring: 'ring-gold', text: 'text-gold', bar: 'from-gold/30' },
-  2: { ring: 'ring-silver', text: 'text-silver', bar: 'from-silver/20' },
-  3: { ring: 'ring-bronze', text: 'text-bronze', bar: 'from-bronze/20' },
-} as const
-
-// Step heights follow podium position; colours and labels follow the real rank, so ties look tied.
-const stepHeight = { 1: 'h-32 sm:h-40', 2: 'h-24 sm:h-28', 3: 'h-16 sm:h-20' } as const
-
-const ordinal = (n: number) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`
-
-function Podium({ members }: { members: Ranked[] }) {
-  // Visual order: 2nd, 1st, 3rd.
-  const order = [members[1], members[0], members[2]]
-  return (
-    <div className="grid grid-cols-3 items-end gap-3 sm:gap-5">
-      {order.map((m, i) => {
-        if (!m) return <div key={i} />
-        const place = (i === 1 ? 1 : i === 0 ? 2 : 3) as 1 | 2 | 3
-        const s = medal[Math.min(m.rank, 3) as 1 | 2 | 3]
-        return (
-          <a
-            key={m.username}
-            href={profileUrl(m.username)}
-            target="_blank"
-            rel="noreferrer"
-            className="group flex flex-col items-center"
-          >
-            {m.rank === 1 && <span className="mb-1 text-2xl" aria-hidden>👑</span>}
-            <span className={`rounded-full ring-2 ring-offset-4 ring-offset-ink-950 ${s.ring}`}>
-              <Avatar name={m.username} size="lg" />
-            </span>
-            <span className="mt-3 max-w-full truncate text-sm font-semibold group-hover:underline sm:text-base">
-              {m.username}
-            </span>
-            <span className={`font-mono text-sm font-bold ${s.text}`}>{m.points.toLocaleString()} pts</span>
-            <div
-              className={`mt-3 flex w-full items-start justify-center rounded-t-xl border border-b-0 border-ink-700 bg-gradient-to-b to-transparent pt-3 ${s.bar} ${stepHeight[place]}`}
-            >
-              <span className={`font-mono text-lg font-black sm:text-2xl ${s.text}`}>{ordinal(m.rank)}</span>
-            </div>
-          </a>
-        )
-      })}
-    </div>
-  )
-}
-
-function Row({ member, highlight, top }: { member: Ranked; highlight: boolean; top: number }) {
-  const pct = top > 0 && member.points > 0 ? Math.max(2, (member.points / top) * 100) : 0
-  const rankColor =
-    member.rank === 1 ? 'text-gold' : member.rank === 2 ? 'text-silver' : member.rank === 3 ? 'text-bronze' : 'text-ink-400'
-
-  return (
-    <li className={`flex items-center gap-3 px-4 py-3 sm:gap-4 ${highlight ? 'bg-ink-800/40' : ''}`}>
-      <span className={`w-7 text-right font-mono text-sm font-bold ${rankColor}`}>{member.rank}</span>
-      <Avatar name={member.username} size="sm" />
-      <div className="min-w-0 flex-1">
-        <a
-          href={profileUrl(member.username)}
-          target="_blank"
-          rel="noreferrer"
-          className="block truncate text-sm font-medium hover:underline"
-        >
-          {member.username}
-        </a>
-        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-ink-700/70">
-          <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-gold" style={{ width: `${pct}%` }} />
+    <section className="flex flex-wrap items-center gap-10 pt-6 pb-4 sm:pt-12">
+      <div className="min-w-0 flex-[1_1_480px]">
+        <h1 className="display text-[clamp(42px,5.6vw,68px)] leading-[1] font-extrabold">
+          <span className="anim-fade-up block" style={{ animationDelay: '60ms' }}>
+            Train on katas.
+          </span>
+          <span className="anim-fade-up block text-club" style={{ animationDelay: '180ms' }}>
+            Climb the belts.
+          </span>
+        </h1>
+        <p className="anim-fade-up mt-5 max-w-[520px] text-[17px] leading-relaxed text-[#4A4E57] sm:text-lg" style={{ animationDelay: '300ms' }}>
+          APC tracks your Codewars solves on the club's chosen katas. Every solve earns points, points move you up the
+          belts, and the best climbers top the board.
+        </p>
+        <div className="anim-fade-up mt-7 flex flex-wrap gap-3" style={{ animationDelay: '420ms' }}>
+          <Link to="/katas" className="btn-club max-sm:flex-1">
+            See this season's katas
+          </Link>
+          <Link to="/#how" className="btn-ghost max-sm:flex-1">
+            How ranking works
+          </Link>
+        </div>
+        <div className="anim-fade-up mt-9 flex flex-wrap gap-7 border-t border-line pt-6" style={{ animationDelay: '540ms' }}>
+          <Stat value={members} label="members" />
+          <Stat value={points} label="points earned" />
+          <Stat value={katas} label="katas open" />
         </div>
       </div>
-      <span className="w-20 text-right font-mono text-sm font-semibold">
-        {member.points.toLocaleString()}
-        <span className="ml-1 text-xs font-normal text-ink-400">pts</span>
-      </span>
-    </li>
+
+      <BeltLadder ranked={ranked} loading={loading} />
+    </section>
   )
+}
+
+function Stat({ value, label }: { value?: number; label: string }) {
+  const n = useCountUp(value ?? 0, 1200, value != null)
+  return (
+    <div>
+      {value == null ? (
+        <span className="skeleton block h-8 w-16 rounded-md" />
+      ) : (
+        <b className="display block text-[26px] font-extrabold sm:text-[30px]">{n.toLocaleString()}</b>
+      )}
+      <span className="text-[13px] text-muted">{label}</span>
+    </div>
+  )
+}
+
+function BeltLadder({ ranked, loading }: { ranked: RankedMember[]; loading: boolean }) {
+  const { ref, inView } = useInView<HTMLElement>()
+  const rungs = [...BELTS].reverse()
+
+  return (
+    <aside
+      ref={ref}
+      className="anim-fade-up min-w-0 flex-[1_1_400px] rounded-[22px] bg-night px-4 pt-5 pb-3 text-paper sm:px-6 sm:pt-6"
+      style={{ animationDelay: '250ms' }}
+      aria-label="Belt ladder"
+    >
+      <div className="mb-3.5 flex items-baseline justify-between gap-3">
+        <h2 className="display text-[22px] font-bold">The belt ladder</h2>
+        <span className="text-[13px] text-night-muted">by points</span>
+      </div>
+      {rungs.map((b, i) => {
+        const people = ranked.filter((m) => m.progress.belt.kyu === b.kyu)
+        const empty = people.length === 0
+        return (
+          <div
+            key={b.kyu}
+            className={`group grid grid-cols-[52px_48px_minmax(0,1fr)_auto] items-center gap-2.5 border-t border-night-line py-2.5 sm:grid-cols-[74px_62px_minmax(0,1fr)_auto] sm:gap-3.5 ${
+              inView ? 'anim-slide' : 'opacity-0'
+            }`}
+            style={{ animationDelay: `${300 + i * 60}ms` }}
+          >
+            <BeltStrip belt={b} ring="#15161A" />
+            <span className={`text-sm font-bold ${empty ? 'text-[#6B707A]' : ''}`}>{b.kyu} kyu</span>
+            <span className={`text-xs ${empty ? 'text-[#6B707A]' : 'text-night-muted'}`}>{beltRange(b)}</span>
+            <span className="flex items-center justify-end">
+              {loading ? (
+                <span className="h-7 w-12 animate-pulse rounded-full bg-night-line" />
+              ) : (
+                <>
+                  {people.slice(0, 3).map((m, j) => (
+                    <span
+                      key={m.username}
+                      className={`-ml-2 first:ml-0 ${inView ? 'anim-pop' : 'opacity-0'}`}
+                      style={{ animationDelay: `${600 + i * 60 + j * 70}ms` }}
+                      title={m.username}
+                    >
+                      <Avatar name={m.username} size="xs" ring="#15161A" />
+                    </span>
+                  ))}
+                  <span className="ml-2 min-w-4 text-xs text-night-muted">
+                    {people.length > 3 ? `+${people.length - 3}` : empty ? '—' : ''}
+                  </span>
+                </>
+              )}
+            </span>
+          </div>
+        )
+      })}
+    </aside>
+  )
+}
+
+/* ---------------------------------- Board --------------------------------- */
+
+type Filter = 'all' | BeltColor
+const filters: Filter[] = ['all', 'purple', 'blue', 'yellow', 'white']
+
+function Board({
+  ranked,
+  raw,
+  loading,
+  error,
+  retry,
+  updatedAt,
+}: {
+  ranked: RankedMember[]
+  raw?: Member[]
+  loading: boolean
+  error?: string
+  retry: () => Promise<void>
+  updatedAt?: Date
+}) {
+  const [filter, setFilter] = useState<Filter>('all')
+  const [query, setQuery] = useState('')
+  const now = useNow()
+  const gains = useGains(raw)
+
+  const q = query.trim().toLowerCase()
+  const visible = ranked.filter(
+    (m) => (filter === 'all' || m.progress.belt.color === filter) && (!q || m.username.toLowerCase().includes(q)),
+  )
+  const showPodium = filter === 'all' && !q
+  const podium = showPodium ? ranked.slice(0, 3) : []
+  const rest = showPodium ? ranked.slice(3) : visible
+  const counts = (f: Filter) => (f === 'all' ? ranked.length : ranked.filter((m) => m.progress.belt.color === f).length)
+
+  return (
+    <section className="pt-16 sm:pt-20" aria-label="Leaderboard" id="board">
+      <Reveal>
+        <SectionHeader
+          title="The board"
+          subtitle={
+            <span className="inline-flex items-center gap-2">
+              <span className="live-dot inline-block size-2 rounded-full bg-[#2DA463]" />
+              Top 20 members · updated {timeAgo(updatedAt, now)}
+            </span>
+          }
+          right={
+            <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+              <div className="flex w-full rounded-full bg-chip p-1 sm:w-auto" role="group" aria-label="Filter by belt">
+                {filters.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFilter(f)}
+                    aria-pressed={filter === f}
+                    className={`min-h-9 flex-1 rounded-full px-3 text-[13px] font-semibold transition-all duration-200 sm:flex-none sm:text-sm ${
+                      filter === f ? 'bg-white text-ink shadow-[0_1px_2px_rgba(0,0,0,.08)]' : 'text-[#4A4E57] hover:text-ink'
+                    }`}
+                  >
+                    {f === 'all' ? 'All' : beltStyle[f].label}
+                    <span className="ml-1 hidden text-xs font-medium text-muted sm:inline">{counts(f)}</span>
+                  </button>
+                ))}
+              </div>
+              <input
+                className="input h-11 rounded-full sm:w-52"
+                placeholder="Find a member"
+                aria-label="Find a member"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+          }
+        />
+      </Reveal>
+
+      {error && (
+        <Notice kind="error">
+          {error}{' '}
+          <button className="font-semibold underline" onClick={() => void retry()}>
+            Try again
+          </button>
+        </Notice>
+      )}
+
+      {loading && <BoardSkeleton />}
+
+      {!loading && !error && ranked.length === 0 && (
+        <EmptyState title="No one on the board yet">Once execs add members, they'll appear here as they solve katas.</EmptyState>
+      )}
+
+      {podium.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-3">
+          {podium.map((m, i) => (
+            <Reveal key={m.username} delay={i * 110}>
+              <PodiumCard member={m} leader={ranked[0]} second={ranked[1]} gain={gains[m.username]} />
+            </Reveal>
+          ))}
+        </div>
+      )}
+
+      {!loading && ranked.length > 0 && rest.length === 0 && !showPodium && (
+        <p className="card anim-fade-up py-10 text-center text-muted">No members match those filters.</p>
+      )}
+
+      {rest.length > 0 && (
+        <div className="card mt-4 overflow-hidden">
+          {rest.map((m, i) => (
+            <Row key={m.username} member={m} index={i} gain={gains[m.username]} />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function PodiumCard({
+  member: m,
+  leader,
+  second,
+  gain,
+}: {
+  member: RankedMember
+  leader: RankedMember
+  second?: RankedMember
+  gain?: { n: number; key: number }
+}) {
+  const pts = useCountUp(m.points, 1300)
+  const s = beltStyle[m.progress.belt.color]
+  const isTop = m.rank === 1
+  const note = isTop
+    ? second && second.points === m.points
+      ? 'Tied at the top'
+      : second
+        ? `${m.points - second.points} pts clear at the top`
+        : 'Leading the board'
+    : m.points === leader.points
+      ? 'Tied for 1st'
+      : `${leader.points - m.points} pts behind 1st`
+
+  return (
+    <article key={gain?.key} className={`card lift group relative flex h-full flex-col overflow-hidden ${gain ? 'anim-flash' : ''}`}>
+      <div className="h-2.5" style={{ background: s.fill }} />
+      <div className="flex flex-1 flex-col gap-3.5 p-5 sm:p-[22px]">
+        <div className="flex items-center justify-between">
+          <span className={`display text-[44px] leading-none font-extrabold ${isTop ? 'text-club' : ''}`}>{ordinal(m.rank)}</span>
+          <BeltChip belt={m.progress.belt} suffix=" belt" />
+        </div>
+        <a href={profileUrl(m.username)} target="_blank" rel="noreferrer" className="flex min-w-0 items-center gap-3">
+          <Avatar name={m.username} size="md" className="transition-transform duration-300 group-hover:scale-105" />
+          <span className="min-w-0">
+            <b className="block truncate text-[19px] font-bold group-hover:underline">{m.username}</b>
+            <span className="text-[13px] text-muted">{note}</span>
+          </span>
+        </a>
+        <div className="relative flex items-baseline gap-1.5">
+          <span className="display text-[30px] font-extrabold">{pts.toLocaleString()}</span>
+          <span className="text-[13px] font-medium text-muted">points</span>
+          {gain && <GainBadge key={gain.key} n={gain.n} />}
+        </div>
+        <div className="mt-auto flex flex-col gap-1.5">
+          <Progress pct={m.progress.pct} color={s.bar} />
+          <span className="text-[12.5px] text-muted">
+            {m.progress.next ? `${m.progress.toNext} pts to ${m.progress.next.kyu} kyu` : 'Top belt reached'}
+          </span>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function Row({ member: m, index, gain }: { member: RankedMember; index: number; gain?: { n: number; key: number } }) {
+  const { ref, inView } = useInView<HTMLDivElement>()
+  const s = beltStyle[m.progress.belt.color]
+  return (
+    <div
+      ref={ref}
+      key={gain?.key}
+      className={`grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5 border-t border-line-soft px-3.5 py-3 transition-colors first:border-t-0 hover:bg-[#FAFBFC] sm:grid-cols-[44px_minmax(0,1.4fr)_96px_minmax(0,1fr)_80px] sm:gap-4 sm:px-[22px] ${
+        inView ? 'anim-fade-up' : 'opacity-0'
+      } ${gain ? 'anim-flash' : ''}`}
+      style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}
+    >
+      <span className="font-bold text-muted">{m.rank}</span>
+      <a href={profileUrl(m.username)} target="_blank" rel="noreferrer" className="group flex min-w-0 items-center gap-3 font-semibold">
+        <Avatar name={m.username} size="sm" className="transition-transform duration-300 group-hover:scale-110" />
+        <span className="truncate group-hover:underline">{m.username}</span>
+      </a>
+      <span className="hidden sm:block">
+        <BeltChip belt={m.progress.belt} />
+      </span>
+      <span className="hidden items-center gap-2.5 sm:flex">
+        <span className="flex-1">{inView && <Progress pct={m.progress.pct} color={s.bar} height={6} />}</span>
+        <span className="text-xs whitespace-nowrap text-muted">
+          {m.progress.next ? `${m.progress.toNext} to ${m.progress.next.kyu} kyu` : 'top belt'}
+        </span>
+      </span>
+      <span className="relative text-right text-base font-bold">
+        {m.points.toLocaleString()}
+        {gain && <GainBadge key={gain.key} n={gain.n} right />}
+      </span>
+    </div>
+  )
+}
+
+function GainBadge({ n, right }: { n: number; right?: boolean }) {
+  return (
+    <span
+      className={`anim-float pointer-events-none absolute -top-5 rounded-full bg-[#2DA463] px-2 py-0.5 text-xs font-bold text-white ${
+        right ? 'right-0' : 'left-24'
+      }`}
+    >
+      +{n}
+    </span>
+  )
+}
+
+function BoardSkeleton() {
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="card flex flex-col gap-4 p-5">
+            <span className="skeleton h-10 w-16 rounded-md" />
+            <span className="flex items-center gap-3">
+              <span className="skeleton size-12 rounded-full" />
+              <span className="skeleton h-5 w-28 rounded-md" />
+            </span>
+            <span className="skeleton h-8 w-20 rounded-md" />
+            <span className="skeleton h-2 rounded-full" />
+          </div>
+        ))}
+      </div>
+      <div className="card mt-4 overflow-hidden">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex items-center gap-4 border-t border-line-soft px-5 py-3.5 first:border-t-0">
+            <span className="skeleton size-[34px] rounded-full" />
+            <span className="skeleton h-4 w-32 rounded-md" />
+            <span className="skeleton ml-auto h-4 w-10 rounded-md" />
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+/* ------------------------------ How it works ------------------------------ */
+
+function HowItWorks() {
+  const steps = [
+    { n: 1, title: 'Get added', body: "Send your Codewars username to a club exec. They'll put you on the board." },
+    { n: 2, title: 'Solve katas', body: "Pick any kata from this season's list and solve it on Codewars, in any language." },
+    { n: 3, title: 'Rank up', body: 'Points land within minutes. Earn enough and you move up a belt on the ladder.' },
+  ]
+  return (
+    <>
+      <section className="scroll-mt-24 pt-16 sm:pt-20" id="how" aria-label="How it works">
+        <Reveal>
+          <SectionHeader title="How it works" subtitle="Three steps from sign-up to the top of the board." />
+        </Reveal>
+        <div className="grid gap-4 md:grid-cols-3">
+          {steps.map((s, i) => (
+            <Reveal key={s.n} delay={i * 110} className="h-full">
+              <div className="card lift group h-full p-[22px]">
+                <span className="display flex size-10 items-center justify-center rounded-xl bg-ink text-lg font-extrabold text-white transition-colors duration-300 group-hover:bg-club">
+                  {s.n}
+                </span>
+                <h3 className="mt-4 mb-1.5 text-lg font-bold">{s.title}</h3>
+                <p className="leading-relaxed text-[#4A4E57]">{s.body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      <Reveal as="section" className="mt-16 flex flex-wrap items-center justify-between gap-5 rounded-3xl bg-night p-7 text-paper sm:p-10">
+        <div>
+          <h2 className="display text-[26px] font-extrabold sm:text-[34px]">Ready to train?</h2>
+          <p className="mt-2 text-[#B7BBC4]">Every APC member can join. Pick a kata and start climbing.</p>
+        </div>
+        <Link to="/katas" className="btn-club max-sm:w-full">
+          Browse katas
+        </Link>
+      </Reveal>
+    </>
+  )
+}
+
+/* --------------------------------- helpers -------------------------------- */
+
+const ordinal = (n: number) => {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'
+  return `${n}${s}`
 }
 
 function useNow(intervalMs = 5000) {
