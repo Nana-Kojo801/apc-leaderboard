@@ -41,8 +41,8 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen flex-col">
       <header
-        className={`sticky top-0 z-30 transition-[background-color,box-shadow,backdrop-filter] duration-300 ${
-          scrolled || open ? 'bg-paper/85 shadow-[0_1px_0_#E1E3E8] backdrop-blur-md' : 'bg-transparent'
+        className={`sticky top-0 z-30 transition-[background-color,box-shadow] duration-300 ${
+          scrolled || open ? 'bg-paper shadow-[0_1px_0_#E1E3E8]' : 'bg-transparent'
         }`}
       >
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between gap-4 px-4 sm:h-[72px] sm:px-8">
