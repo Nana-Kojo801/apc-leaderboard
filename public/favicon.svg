@@ -1,1 +1,58 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#B3261E"/><rect x="6" y="14" width="20" height="5" rx="1.5" fill="#fff"/><rect x="14" y="11.5" width="4" height="10" rx="1.2" fill="#fff" stroke="#B3261E" stroke-width="1.2"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Ashesi Programming Club">
+  <defs>
+    <clipPath id="face"><circle cx="256" cy="256" r="232"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3D3D40"/>
+      <stop offset="1" stop-color="#2A2A2D"/>
+    </linearGradient>
+    <linearGradient id="desk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A7A7AA"/>
+      <stop offset="1" stop-color="#4E4E52"/>
+    </linearGradient>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity=".35"/>
+    </filter>
+  </defs>
+
+  <!-- ring + face -->
+  <circle cx="256" cy="256" r="250" fill="#0B0B0C"/>
+  <circle cx="256" cy="256" r="232" fill="url(#bg)"/>
+
+  <g clip-path="url(#face)">
+    <!-- desk -->
+    <path d="M150 340 H362 L490 520 H22 Z" fill="url(#desk)"/>
+
+    <!-- shrine -->
+    <g fill="#B3262E" filter="url(#lift)">
+      <path d="M150 134 L256 72 L362 134" fill="none" stroke="#B3262E" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="256" cy="120" r="13"/>
+      <rect x="202" y="146" width="108" height="17" rx="5"/>
+      <rect x="225" y="161" width="16" height="40" rx="3"/>
+      <rect x="271" y="161" width="16" height="40" rx="3"/>
+      <rect x="186" y="196" width="140" height="19" rx="6"/>
+    </g>
+
+    <g fill="#FFFFFF" filter="url(#lift)">
+      <!-- left coder -->
+      <circle cx="112" cy="258" r="34"/>
+      <path d="M18 314 C44 294 92 290 124 304 L188 336 C204 344 200 366 182 366 L150 366 L84 412 L18 422 Z"/>
+      <!-- right coder -->
+      <circle cx="400" cy="258" r="34"/>
+      <path d="M494 314 C468 294 420 290 388 304 L324 336 C308 344 312 366 330 366 L362 366 L428 412 L494 422 Z"/>
+
+      <!-- screens -->
+      <path d="M216 250 a8 8 0 0 1 16 0 V362 a8 8 0 0 1 -8 8 H178 a8 8 0 0 1 0 -16 H216 Z"/>
+      <path d="M296 250 a8 8 0 0 0 -16 0 V362 a8 8 0 0 0 8 8 H334 a8 8 0 0 0 0 -16 H296 Z"/>
+    </g>
+
+    <!-- sparks -->
+    <g stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" filter="url(#lift)">
+      <path d="M176 236 L198 249"/>
+      <path d="M170 280 H196"/>
+      <path d="M176 324 L198 311"/>
+      <path d="M336 236 L314 249"/>
+      <path d="M342 280 H316"/>
+      <path d="M336 324 L314 311"/>
+    </g>
+  </g>
+</svg>

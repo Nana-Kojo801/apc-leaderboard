@@ -129,8 +129,12 @@ export default function Layout() {
 
 function Mark() {
   return (
-    <span className="display flex size-9 items-center justify-center rounded-[10px] bg-club text-[13px] font-extrabold text-white transition-transform duration-300 group-hover:-rotate-6">
-      APC
-    </span>
+    <img
+      src="/favicon.svg"
+      alt=""
+      width={40}
+      height={40}
+      className="size-10 transition-transform duration-500 ease-out group-hover:-rotate-12 group-hover:scale-105"
+    />
   )
 }
